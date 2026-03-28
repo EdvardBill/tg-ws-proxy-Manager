@@ -196,7 +196,7 @@ menu() {
 
 # Создаем символическую ссылку для удобного запуска
 if [ ! -f "/usr/bin/tpm" ] && [ -f "$0" ]; then
-    ln -sf "$0" /usr/bin/tpm 2>/dev/null
+    ln -sf /opt/bin/tg-ws-proxy-manager.sh /usr/bin/tpm 2>/dev/null
     echo -e "${GREEN}Для быстрого запуска используйте команду: tpm${NC}"
 fi
 
