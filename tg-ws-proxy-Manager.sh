@@ -11,6 +11,13 @@ NC="\033[0m"
 
 GIT_URL="https://github.com/Flowseal/tg-ws-proxy/archive/refs/heads/master.zip"
 
+# Определяем реальный путь к скрипту
+if [ -L "$0" ]; then
+    SCRIPT_PATH=$(readlink -f "$0")
+else
+    SCRIPT_PATH="$0"
+fi
+
 # Установка пути для Entware
 ENTWARE_PREFIX="/opt"
 INIT_DIR="$ENTWARE_PREFIX/etc/init.d"
@@ -194,10 +201,25 @@ menu() {
     esac
 }
 
-# Создаем символическую ссылку для удобного запуска
-if [ ! -f "/usr/bin/tpm" ] && [ -f "$0" ]; then
-    ln -sf /opt/bin/tg-ws-proxy-manager.sh /usr/bin/tpm 2>/dev/null
-    echo -e "${GREEN}Для быстрого запуска используйте команду: tpm${NC}"
-fi
+create_symlink() {
+    # Проверяем существующие директории в PATH
+    for dir in /usr/bin /opt/bin /etc/storage; do
+        if [ -d "$dir" ] && [ -w "$dir" ]; then
+            ln -sf "$SCRIPT_PATH" "$dir/tpm" 2>/dev/null
+            if [ $? -eq 0 ]; then
+                echo -e "${GREEN}Для быстрого запуска используйте команду: tpm${NC}"
+                return 0
+            fi
+        fi
+    done
+    
+    # Если не удалось создать ссылку, показываем альтернативу
+    echo -e "${YELLOW}Не удалось создать символическую ссылку.${NC}"
+    echo -e "${YELLOW}Используйте полный путь для запуска: ${GREEN}$SCRIPT_PATH${NC}"
+    echo -e "${YELLOW}Или добавьте алиас: ${GREEN}alias tpm='$SCRIPT_PATH'${NC}"
+}
+
+# Создаем ссылку при первом запуске
+create_symlink
 
 while true; do menu; done
