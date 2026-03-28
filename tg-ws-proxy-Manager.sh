@@ -23,8 +23,8 @@ mkdir -p "$ROOT_DIR"
 
 # Проверка наличия Entware
 if [ ! -d "$ENTWARE_PREFIX" ]; then
-    echo -e "\n${RED}Entware не установлен!${NC}"
-    echo -e "${YELLOW}Установите Entware перед использованием этого скрипта${NC}"
+    echo -e "\n${RED}Entware не установлен.${NC}"
+    echo -e "${YELLOW}Установите Entware перед использованием этого скрипта.${NC}"
     exit 1
 fi
 
@@ -41,31 +41,31 @@ PAUSE() { echo -ne "\nНажмите Enter..."; read dummy; }
 install_tg_ws() {
     # Проверка свободного места в /opt
     if [ "$(df -m "$ENTWARE_PREFIX" 2>/dev/null | awk 'NR==2 {print $4+0}')" -lt 40 ]; then
-        echo -e "\n${RED}Недостаточно свободного места в $ENTWARE_PREFIX!${NC}"
+        echo -e "\n${RED}Недостаточно свободного места в $ENTWARE_PREFIX.${NC}"
         PAUSE
         return 1
     fi
 
-    echo -e "\n${MAGENTA}Обновляем пакеты Entware${NC}"
+    echo -e "\n${MAGENTA}Обновляем пакеты Entware.${NC}"
     $UPDATE
 
-    echo -e "${MAGENTA}Устанавливаем необходимые пакеты${NC}"
+    echo -e "${MAGENTA}Устанавливаем необходимые пакеты.${NC}"
     $INSTALL python3 python3-pip python3-psutil python3-cryptography unzip
 
-    echo -e "${MAGENTA}Скачиваем и распаковываем tg-ws-proxy${NC}"
+    echo -e "${MAGENTA}Скачиваем и распаковываем tg-ws-proxy.${NC}"
 
     rm -rf "$ROOT_DIR/tg-ws-proxy"
 
     cd "$ROOT_DIR" || exit 1
 
     if ! wget -O tg-ws-proxy.zip "$GIT_URL"; then
-        echo -e "\n${RED}Ошибка скачивания архива${NC}\n"
+        echo -e "\n${RED}Ошибка скачивания архива.${NC}\n"
         PAUSE
         return 1
     fi
 
     if ! unzip tg-ws-proxy.zip >/dev/null 2>&1; then
-        echo -e "\n${RED}Ошибка распаковки${NC}\n"
+        echo -e "\n${RED}Ошибка распаковки.${NC}\n"
         PAUSE
         return 1
     fi
@@ -75,7 +75,7 @@ install_tg_ws() {
 
     cd "$ROOT_DIR/tg-ws-proxy" || exit 1
 
-    echo -e "${MAGENTA}Устанавливаем tg-ws-proxy${NC}"
+    echo -e "${MAGENTA}Устанавливаем tg-ws-proxy.${NC}"
     pip install --root-user-action=ignore --no-deps --disable-pip-version-check --timeout 2 --retries 1 -e .
 
     # Создаем init.d скрипт для Padavan с использованием rc.func
@@ -97,41 +97,41 @@ EOF
     # Запускаем сервис
     "$INIT_DIR/S99tg-ws-proxy" start >/dev/null 2>&1
 
-    echo -e "\n${GREEN}Установка завершена${NC}"
+    echo -e "\n${GREEN}Установка завершена.${NC}"
     echo -e "${YELLOW}Сервис установлен в: $INIT_DIR/S99tg-ws-proxy${NC}"
     echo -e "${YELLOW}Для управления используйте: $INIT_DIR/S99tg-ws-proxy {start|stop|restart|check}${NC}"
     PAUSE
 }
 
 delete_tg_ws() {
-    echo -e "\n${MAGENTA}Удаляем tg-ws-proxy${NC}"
+    echo -e "\n${MAGENTA}Удаляем tg-ws-proxy.${NC}"
 
-    echo -e "${CYAN}Останавливаем сервис${NC}"
+    echo -e "${CYAN}Останавливаем сервис.${NC}"
     if [ -f "$INIT_DIR/S99tg-ws-proxy" ]; then
         "$INIT_DIR/S99tg-ws-proxy" stop >/dev/null 2>&1
     fi
 
-    echo -e "${CYAN}Удаляем init.d скрипт${NC}"
+    echo -e "${CYAN}Удаляем init.d скрипт.${NC}"
     rm -f "$INIT_DIR/S99tg-ws-proxy" >/dev/null 2>&1
 
-    echo -e "${CYAN}Удаляем tg-ws-proxy${NC}"
+    echo -e "${CYAN}Удаляем tg-ws-proxy.${NC}"
     rm -rf "$ROOT_DIR/tg-ws-proxy" >/dev/null 2>&1
 
-    echo -e "${CYAN}Удаляем пакеты Python${NC}"
+    echo -e "${CYAN}Удаляем пакеты Python.${NC}"
     python3 -m pip uninstall -y tg-ws-proxy >/dev/null 2>&1
     pip uninstall -y tg-ws-proxy >/dev/null 2>&1
 
     # Удаляем установленные пакеты
-    echo -e "${CYAN}Удаляем установленные пакеты${NC}"
+    echo -e "${CYAN}Удаляем установленные пакеты.${NC}"
     $OPKG remove --autoremove python3 python3-pip python3-psutil python3-cryptography unzip >/dev/null 2>&1
 
     # Очистка остатков
-    echo -e "${CYAN}Очищаем временные файлы${NC}"
+    echo -e "${CYAN}Очищаем временные файлы.${NC}"
     rm -rf "$ROOT_DIR/.cache/pip" >/dev/null 2>&1
     rm -rf "$ROOT_DIR/.local/lib/python3"* >/dev/null 2>&1
     rm -f "$BIN_DIR/tg-ws-proxy"* >/dev/null 2>&1
 
-    echo -e "\n${GREEN}Удаление завершено${NC}"
+    echo -e "\n${GREEN}Удаление завершено.${NC}"
     PAUSE
 }
 
@@ -144,14 +144,14 @@ menu() {
 
     # Проверка статуса
     if pidof "tg-ws-proxy" >/dev/null 2>&1; then
-        echo -e "${YELLOW}Статус tg-ws-proxy:  ${GREEN}запущен${NC}"
+        echo -e "${YELLOW}Статус tg-ws-proxy:  ${GREEN}ЗАПУЩЕН${NC}"
         PORT=$(netstat -lnpt 2>/dev/null | grep tg-ws-proxy | awk '{print $4}' | cut -d: -f2 | head -1)
         echo -e "${YELLOW}Адрес SOCKS5: ${NC}$LAN_IP:${PORT:-1080}"
     elif [ -d "$ROOT_DIR/tg-ws-proxy" ] || python3 -m pip show tg-ws-proxy >/dev/null 2>&1; then
-        echo -e "${YELLOW}Статус tg-ws-proxy: ${RED}не запущен${NC}"
+        echo -e "${YELLOW}Статус tg-ws-proxy: ${RED}НЕ ЗАПУЩЕН${NC}"
         echo -e "${CYAN}Для запуска выполните: $INIT_DIR/S99tg-ws-proxy start${NC}"
     else
-        echo -e "${YELLOW}Статус tg-ws-proxy: ${RED}не установлен${NC}"
+        echo -e "${YELLOW}Статус tg-ws-proxy: ${RED}НЕ УСТАНОВЛЕН${NC}"
     fi
 
     echo -e "\n${CYAN}1) ${GREEN}Установить${NC}"
@@ -170,7 +170,7 @@ menu() {
             if [ -f "$INIT_DIR/S99tg-ws-proxy" ]; then
                 "$INIT_DIR/S99tg-ws-proxy" start
             else
-                echo -e "${RED}Сервис не установлен!${NC}"
+                echo -e "${RED}Сервис не установлен.${NC}"
                 PAUSE
             fi
             ;;
@@ -178,7 +178,7 @@ menu() {
             if [ -f "$INIT_DIR/S99tg-ws-proxy" ]; then
                 "$INIT_DIR/S99tg-ws-proxy" stop
             else
-                echo -e "${RED}Сервис не установлен!${NC}"
+                echo -e "${RED}Сервис не установлен.${NC}"
                 PAUSE
             fi
             ;;
@@ -186,7 +186,7 @@ menu() {
             if [ -f "$INIT_DIR/S99tg-ws-proxy" ]; then
                 "$INIT_DIR/S99tg-ws-proxy" check
             else
-                echo -e "${RED}Сервис не установлен!${NC}"
+                echo -e "${RED}Сервис не установлен.${NC}"
             fi
             PAUSE
             ;;
