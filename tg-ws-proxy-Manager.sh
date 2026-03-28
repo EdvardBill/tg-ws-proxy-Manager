@@ -146,7 +146,7 @@ menu() {
     if pidof "tg-ws-proxy" >/dev/null 2>&1; then
         echo -e "${YELLOW}Статус tg-ws-proxy:  ${GREEN}запущен${NC}"
         PORT=$(netstat -lnpt 2>/dev/null | grep tg-ws-proxy | awk '{print $4}' | cut -d: -f2 | head -1)
-        echo -e "${YELLOW}адрес SOCKS5: ${NC}$LAN_IP:${PORT:-1080}"
+        echo -e "${YELLOW}Адрес SOCKS5: ${NC}$LAN_IP:${PORT:-1080}"
     elif [ -d "$ROOT_DIR/tg-ws-proxy" ] || python3 -m pip show tg-ws-proxy >/dev/null 2>&1; then
         echo -e "${YELLOW}Статус tg-ws-proxy: ${RED}не запущен${NC}"
         echo -e "${CYAN}Для запуска выполните: $INIT_DIR/S99tg-ws-proxy start${NC}"
