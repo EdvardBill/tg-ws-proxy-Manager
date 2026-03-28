@@ -76,7 +76,7 @@ install_tg_ws() {
     cd "$ROOT_DIR/tg-ws-proxy" || exit 1
 
     echo -e "${MAGENTA}Устанавливаем tg-ws-proxy${NC}"
-    pip install --no-deps --disable-pip-version-check --timeout 2 --retries 1 -e .
+    pip install --root-user-action=ignore --no-deps --disable-pip-version-check --timeout 2 --retries 1 -e .
 
     # Создаем init.d скрипт для Padavan с использованием rc.func
     cat << 'EOF' > "$INIT_DIR/S99tg-ws-proxy"
