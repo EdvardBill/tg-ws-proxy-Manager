@@ -8,84 +8,52 @@ RED="\033[1;31m"
 BLUE="\033[0;34m"
 DGRAY="\033[38;5;244m"
 NC="\033[0m"
-
 GIT_URL="https://github.com/Flowseal/tg-ws-proxy/archive/refs/heads/master.zip"
-
-# Определяем реальный путь к скрипту
-if [ -L "$0" ]; then
-    SCRIPT_PATH=$(readlink -f "$0")
-else
-    SCRIPT_PATH="$0"
-fi
-
-# Установка пути для Entware
 ENTWARE_PREFIX="/opt"
 INIT_DIR="$ENTWARE_PREFIX/etc/init.d"
 BIN_DIR="$ENTWARE_PREFIX/bin"
 LIB_DIR="$ENTWARE_PREFIX/lib"
 ROOT_DIR="$ENTWARE_PREFIX/root"
-
-# Создаем директорию root если её нет
 mkdir -p "$ROOT_DIR"
-
-# Проверка наличия Entware
 if [ ! -d "$ENTWARE_PREFIX" ]; then
     echo -e "\n${RED}Entware не установлен.${NC}"
     echo -e "${YELLOW}Установите Entware перед использованием этого скрипта.${NC}"
     exit 1
 fi
-
-# Используем opkg из Entware
 OPKG="$ENTWARE_PREFIX/bin/opkg"
 UPDATE="$OPKG update"
 INSTALL="$OPKG install --force-reinstall"
-
 LAN_IP=$(nvram get lan_ipaddr 2>/dev/null | cut -d/ -f1)
 [ -z "$LAN_IP" ] && LAN_IP="192.168.1.1"
-
 PAUSE() { echo -ne "\nНажмите Enter..."; read dummy; }
-
 install_tg_ws() {
-    # Проверка свободного места в /opt
     if [ "$(df -m "$ENTWARE_PREFIX" 2>/dev/null | awk 'NR==2 {print $4+0}')" -lt 40 ]; then
         echo -e "\n${RED}Недостаточно свободного места в $ENTWARE_PREFIX.${NC}"
         PAUSE
         return 1
     fi
-
     echo -e "\n${MAGENTA}Обновляем пакеты Entware.${NC}"
     $UPDATE
-
     echo -e "${MAGENTA}Устанавливаем необходимые пакеты.${NC}"
     $INSTALL python3 python3-pip python3-psutil python3-cryptography unzip
-
     echo -e "${MAGENTA}Скачиваем и распаковываем tg-ws-proxy.${NC}"
-
     rm -rf "$ROOT_DIR/tg-ws-proxy"
-
     cd "$ROOT_DIR" || exit 1
-
     if ! wget -O tg-ws-proxy.zip "$GIT_URL"; then
         echo -e "\n${RED}Ошибка скачивания архива.${NC}\n"
         PAUSE
         return 1
     fi
-
     if ! unzip tg-ws-proxy.zip >/dev/null 2>&1; then
         echo -e "\n${RED}Ошибка распаковки.${NC}\n"
         PAUSE
         return 1
     fi
-
     mv tg-ws-proxy-main tg-ws-proxy
     rm -f tg-ws-proxy.zip
-
     cd "$ROOT_DIR/tg-ws-proxy" || exit 1
-
     echo -e "${MAGENTA}Устанавливаем tg-ws-proxy.${NC}"
     pip install --root-user-action=ignore --no-deps --disable-pip-version-check --timeout 2 --retries 1 -e .
-
-    # Создаем init.d скрипт для Padavan с использованием rc.func
     cat << 'EOF' > "$INIT_DIR/S99tg-ws-proxy"
 #!/bin/sh
 
@@ -98,58 +66,41 @@ POSTCMD=""
 
 . /opt/etc/init.d/rc.func
 EOF
-
     chmod +x "$INIT_DIR/S99tg-ws-proxy"
-    
-    # Запускаем сервис
     "$INIT_DIR/S99tg-ws-proxy" start >/dev/null 2>&1
-
     echo -e "\n${GREEN}Установка завершена.${NC}"
     echo -e "${YELLOW}Сервис установлен в: $INIT_DIR/S99tg-ws-proxy${NC}"
     echo -e "${YELLOW}Для управления используйте: $INIT_DIR/S99tg-ws-proxy {start|stop|restart|check}${NC}"
     PAUSE
 }
-
 delete_tg_ws() {
     echo -e "\n${MAGENTA}Удаляем tg-ws-proxy.${NC}"
-
     echo -e "${CYAN}Останавливаем сервис.${NC}"
     if [ -f "$INIT_DIR/S99tg-ws-proxy" ]; then
         "$INIT_DIR/S99tg-ws-proxy" stop >/dev/null 2>&1
     fi
-
     echo -e "${CYAN}Удаляем init.d скрипт.${NC}"
     rm -f "$INIT_DIR/S99tg-ws-proxy" >/dev/null 2>&1
-
     echo -e "${CYAN}Удаляем tg-ws-proxy.${NC}"
     rm -rf "$ROOT_DIR/tg-ws-proxy" >/dev/null 2>&1
-
     echo -e "${CYAN}Удаляем пакеты Python.${NC}"
     python3 -m pip uninstall -y tg-ws-proxy >/dev/null 2>&1
     pip uninstall -y tg-ws-proxy >/dev/null 2>&1
-
-    # Удаляем установленные пакеты
     echo -e "${CYAN}Удаляем установленные пакеты.${NC}"
     $OPKG remove --autoremove python3 python3-pip python3-psutil python3-cryptography unzip >/dev/null 2>&1
-
-    # Очистка остатков
     echo -e "${CYAN}Очищаем временные файлы.${NC}"
     rm -rf "$ROOT_DIR/.cache/pip" >/dev/null 2>&1
     rm -rf "$ROOT_DIR/.local/lib/python3"* >/dev/null 2>&1
     rm -f "$BIN_DIR/tg-ws-proxy"* >/dev/null 2>&1
-
     echo -e "\n${GREEN}Удаление завершено.${NC}"
     PAUSE
 }
-
 menu() {
     clear
     echo -e "╔═════════════════════════════════╗"
     echo -e "║ ${BLUE}tg-ws-proxy Manager для Padavan${NC} ║"
     echo -e "╚═════════════════════════════════╝"
     echo -e "                          ${DGRAY}by save55${NC}\n"
-
-    # Проверка статуса
     if pidof "tg-ws-proxy" >/dev/null 2>&1; then
         echo -e "${YELLOW}Статус tg-ws-proxy:  ${GREEN}ЗАПУЩЕН${NC}"
         PORT=$(netstat -lnpt 2>/dev/null | grep tg-ws-proxy | awk '{print $4}' | cut -d: -f2 | head -1)
@@ -160,7 +111,6 @@ menu() {
     else
         echo -e "${YELLOW}Статус tg-ws-proxy: ${RED}НЕ УСТАНОВЛЕН${NC}"
     fi
-
     echo -e "\n${CYAN}1) ${GREEN}Установить${NC}"
     echo -e "${CYAN}2) ${GREEN}Удалить${NC}"
     echo -e "${CYAN}3) ${GREEN}Запустить${NC}"
@@ -169,7 +119,6 @@ menu() {
     echo -e "${CYAN}Enter) ${GREEN}Выход${NC}\n"
     echo -en "${YELLOW}Выберите пункт: ${NC}"
     read choice
-    
     case "$choice" in 
         1) install_tg_ws ;;
         2) delete_tg_ws ;;
@@ -200,26 +149,4 @@ menu() {
         *) echo; exit 0 ;;
     esac
 }
-
-create_symlink() {
-    # Проверяем существующие директории в PATH
-    for dir in /usr/bin /opt/bin /etc/storage; do
-        if [ -d "$dir" ] && [ -w "$dir" ]; then
-            ln -sf "$SCRIPT_PATH" "$dir/tpm" 2>/dev/null
-            if [ $? -eq 0 ]; then
-                echo -e "${GREEN}Для быстрого запуска используйте команду: tpm${NC}"
-                return 0
-            fi
-        fi
-    done
-    
-    # Если не удалось создать ссылку, показываем альтернативу
-    echo -e "${YELLOW}Не удалось создать символическую ссылку.${NC}"
-    echo -e "${YELLOW}Используйте полный путь для запуска: ${GREEN}$SCRIPT_PATH${NC}"
-    echo -e "${YELLOW}Или добавьте алиас: ${GREEN}alias tpm='$SCRIPT_PATH'${NC}"
-}
-
-# Создаем ссылку при первом запуске
-create_symlink
-
 while true; do menu; done
