@@ -35,7 +35,10 @@ install_tg_ws() {
     echo -e "\n${MAGENTA}Обновляем пакеты Entware.${NC}"
     $UPDATE
     echo -e "${MAGENTA}Устанавливаем необходимые пакеты.${NC}"
-    $INSTALL python3 python3-pip python3-psutil python3-cryptography unzip cron
+    $INSTALL python3 python3-pip python3-psutil python3-cryptography unzip
+    if ! opkg list-installed | grep -q cron; then
+        $INSTALL cron
+    fi
     echo -e "${MAGENTA}Скачиваем и распаковываем tg-ws-proxy.${NC}"
     rm -rf "$ROOT_DIR/tg-ws-proxy"
     cd "$ROOT_DIR" || exit 1
@@ -69,6 +72,7 @@ start() {
     sleep 2
     if pidof $PROCS >/dev/null 2>&1; then
         echo "$DESC started successfully"
+        return 0
     else
         echo "Failed to start $DESC"
         return 1
@@ -109,13 +113,24 @@ EOF
     
     chmod +x "$INIT_DIR/S99tg-ws-proxy"
     mkdir -p "$ENTWARE_PREFIX/var/log"
+    chmod 755 "$ENTWARE_PREFIX/var/log"
     cat << 'EOF' > "$ENTWARE_PREFIX/bin/tg-ws-proxy-monitor.sh"
 #!/bin/sh
-LOG_FILE="/opt/var/log/tg-ws-proxy-monitor.log"
-MAX_LOG_SIZE=1048576
 
-if [ -f "$LOG_FILE" ] && [ $(stat -c%s "$LOG_FILE" 2>/dev/null) -gt $MAX_LOG_SIZE ]; then
-    mv "$LOG_FILE" "$LOG_FILE.old"
+LOG_DIR="/opt/var/log"
+LOG_FILE="$LOG_DIR/tg-ws-proxy-monitor.log"
+MAX_LOG_SIZE=1048576  # 1MB
+
+if [ ! -d "$LOG_DIR" ]; then
+    mkdir -p "$LOG_DIR"
+    chmod 755 "$LOG_DIR"
+fi
+
+if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
+    LOG_SIZE=$(stat -c%s "$LOG_FILE" 2>/dev/null || wc -c < "$LOG_FILE" 2>/dev/null)
+    if [ -n "$LOG_SIZE" ] && [ "$LOG_SIZE" -gt "$MAX_LOG_SIZE" ]; then
+        mv "$LOG_FILE" "$LOG_FILE.old"
+    fi
 fi
 
 if ! pidof tg-ws-proxy >/dev/null 2>&1; then
@@ -123,18 +138,26 @@ if ! pidof tg-ws-proxy >/dev/null 2>&1; then
     /opt/etc/init.d/S99tg-ws-proxy start >> "$LOG_FILE" 2>&1
 fi
 EOF
+    
     chmod +x "$ENTWARE_PREFIX/bin/tg-ws-proxy-monitor.sh"
     mkdir -p "$ENTWARE_PREFIX/var/spool/cron/crontabs"
+    killall crond 2>/dev/null
     sed -i '/tg-ws-proxy-monitor/d' "$ENTWARE_PREFIX/var/spool/cron/crontabs/root" 2>/dev/null
     echo "*/1 * * * * $ENTWARE_PREFIX/bin/tg-ws-proxy-monitor.sh" >> "$ENTWARE_PREFIX/var/spool/cron/crontabs/root"
-    if ! pidof crond >/dev/null 2>&1; then
-        crond -c "$ENTWARE_PREFIX/var/spool/cron/crontabs"
-    fi
+    chmod 600 "$ENTWARE_PREFIX/var/spool/cron/crontabs/root"
+    crond -c "$ENTWARE_PREFIX/var/spool/cron/crontabs"
     "$INIT_DIR/S99tg-ws-proxy" start
     echo -e "\n${GREEN}Установка завершена.${NC}"
     echo -e "${YELLOW}Сервис установлен в: $INIT_DIR/S99tg-ws-proxy${NC}"
     echo -e "${YELLOW}Настроен автоматический мониторинг (проверка каждую минуту)${NC}"
     echo -e "${YELLOW}Лог мониторинга: $ENTWARE_PREFIX/var/log/tg-ws-proxy-monitor.log${NC}"
+    if [ -f "$ENTWARE_PREFIX/var/log/tg-ws-proxy-monitor.log" ]; then
+        echo -e "${GREEN}Лог-файл успешно создан${NC}"
+    else
+        echo -e "${RED}ВНИМАНИЕ: Лог-файл не создан. Проверьте права.${NC}"
+        touch "$ENTWARE_PREFIX/var/log/tg-ws-proxy-monitor.log"
+        chmod 644 "$ENTWARE_PREFIX/var/log/tg-ws-proxy-monitor.log"
+    fi
     echo -e "${YELLOW}Для управления используйте: $INIT_DIR/S99tg-ws-proxy {start|stop|restart|check}${NC}"
     PAUSE
 }
@@ -162,6 +185,49 @@ delete_tg_ws() {
     echo -e "\n${GREEN}Удаление завершено.${NC}"
     PAUSE
 }
+check_monitor_status() {
+    echo -e "\n${CYAN}=== Диагностика мониторинга ===${NC}"
+    if [ -d "$ENTWARE_PREFIX/var/log" ]; then
+        echo -e "${GREEN}✓ Директория логов существует: $ENTWARE_PREFIX/var/log${NC}"
+        ls -la "$ENTWARE_PREFIX/var/log" | grep tg-ws
+    else
+        echo -e "${RED}✗ Директория логов НЕ существует${NC}"
+        mkdir -p "$ENTWARE_PREFIX/var/log"
+        echo -e "${YELLOW}Директория создана${NC}"
+    fi
+    if [ -f "$ENTWARE_PREFIX/bin/tg-ws-proxy-monitor.sh" ]; then
+        echo -e "${GREEN}✓ Скрипт мониторинга существует${NC}"
+        chmod +x "$ENTWARE_PREFIX/bin/tg-ws-proxy-monitor.sh"
+    else
+        echo -e "${RED}✗ Скрипт мониторинга НЕ существует${NC}"
+    fi
+    if [ -f "$ENTWARE_PREFIX/var/spool/cron/crontabs/root" ]; then
+        echo -e "${GREEN}✓ Cron задача существует${NC}"
+        cat "$ENTWARE_PREFIX/var/spool/cron/crontabs/root" | grep tg-ws
+    else
+        echo -e "${RED}✗ Cron задача НЕ существует${NC}"
+    fi
+    if pidof crond >/dev/null 2>&1; then
+        echo -e "${GREEN}✓ Cron запущен (PID: $(pidof crond))${NC}"
+    else
+        echo -e "${RED}✗ Cron НЕ запущен${NC}"
+        crond -c "$ENTWARE_PREFIX/var/spool/cron/crontabs"
+        echo -e "${YELLOW}Cron запущен${NC}"
+    fi
+    echo -e "\n${YELLOW}Запускаем мониторинг вручную...${NC}"
+    sh "$ENTWARE_PREFIX/bin/tg-ws-proxy-monitor.sh"
+    if [ -f "$ENTWARE_PREFIX/var/log/tg-ws-proxy-monitor.log" ]; then
+        echo -e "${GREEN}✓ Лог-файл создан успешно${NC}"
+        echo -e "${CYAN}Содержимое лога:${NC}"
+        cat "$ENTWARE_PREFIX/var/log/tg-ws-proxy-monitor.log"
+    else
+        echo -e "${RED}✗ Лог-файл НЕ создался${NC}"
+        touch "$ENTWARE_PREFIX/var/log/tg-ws-proxy-monitor.log"
+        chmod 644 "$ENTWARE_PREFIX/var/log/tg-ws-proxy-monitor.log"
+        echo -e "${YELLOW}Лог создан вручную${NC}"
+    fi
+    PAUSE
+}
 menu() {
     clear
     echo -e "╔═════════════════════════════════╗"
@@ -183,6 +249,7 @@ menu() {
     echo -e "${CYAN}3) ${GREEN}Запустить${NC}"
     echo -e "${CYAN}4) ${GREEN}Остановить${NC}"
     echo -e "${CYAN}5) ${GREEN}Проверить статус${NC}"
+    echo -e "${CYAN}6) ${GREEN}Диагностика мониторинга${NC}"
     echo -e "${CYAN}Enter) ${GREEN}Выход${NC}\n"
     echo -en "${YELLOW}Выберите пункт: ${NC}"
     read choice
@@ -213,6 +280,7 @@ menu() {
             fi
             PAUSE
             ;;
+        6) check_monitor_status ;;
         *) echo; exit 0 ;;
     esac
 }
