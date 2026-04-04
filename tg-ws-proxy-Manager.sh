@@ -35,7 +35,7 @@ install_tg_ws() {
     echo -e "\n${MAGENTA}Обновляем пакеты Entware.${NC}"
     $UPDATE
     echo -e "${MAGENTA}Устанавливаем необходимые пакеты.${NC}"
-    $INSTALL python3 python3-pip python3-psutil python3-cryptography unzip
+    $INSTALL python3 python3-pip python3-psutil python3-cryptography unzip cron
     echo -e "${MAGENTA}Скачиваем и распаковываем tg-ws-proxy.${NC}"
     rm -rf "$ROOT_DIR/tg-ws-proxy"
     cd "$ROOT_DIR" || exit 1
@@ -61,20 +61,87 @@ ENABLED=yes
 PROCS=tg-ws-proxy
 ARGS="--host 0.0.0.0"
 DESC="tg-ws-proxy"
-PRECMD=""
-POSTCMD=""
+PIDFILE="/var/run/tg-ws-proxy.pid"
 
-. /opt/etc/init.d/rc.func
+start() {
+    echo "Starting $DESC..."
+    start-stop-daemon -S -b -m -p $PIDFILE -x /opt/bin/$PROCS -- $ARGS
+    sleep 2
+    if pidof $PROCS >/dev/null 2>&1; then
+        echo "$DESC started successfully"
+    else
+        echo "Failed to start $DESC"
+        return 1
+    fi
+}
+
+stop() {
+    echo "Stopping $DESC..."
+    start-stop-daemon -K -p $PIDFILE
+    rm -f $PIDFILE
+    sleep 1
+}
+
+restart() {
+    stop
+    sleep 2
+    start
+}
+
+check() {
+    if pidof $PROCS >/dev/null 2>&1; then
+        echo "$DESC is running"
+        return 0
+    else
+        echo "$DESC is not running"
+        return 1
+    fi
+}
+
+case "$1" in
+    start) start ;;
+    stop) stop ;;
+    restart) restart ;;
+    check) check ;;
+    *) echo "Usage: $0 {start|stop|restart|check}" ;;
+esac
 EOF
+    
     chmod +x "$INIT_DIR/S99tg-ws-proxy"
-    "$INIT_DIR/S99tg-ws-proxy" start >/dev/null 2>&1
+    mkdir -p "$ENTWARE_PREFIX/var/log"
+    cat << 'EOF' > "$ENTWARE_PREFIX/bin/tg-ws-proxy-monitor.sh"
+#!/bin/sh
+LOG_FILE="/opt/var/log/tg-ws-proxy-monitor.log"
+MAX_LOG_SIZE=1048576
+
+if [ -f "$LOG_FILE" ] && [ $(stat -c%s "$LOG_FILE" 2>/dev/null) -gt $MAX_LOG_SIZE ]; then
+    mv "$LOG_FILE" "$LOG_FILE.old"
+fi
+
+if ! pidof tg-ws-proxy >/dev/null 2>&1; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): tg-ws-proxy не запущен, перезапускаем..." >> "$LOG_FILE"
+    /opt/etc/init.d/S99tg-ws-proxy start >> "$LOG_FILE" 2>&1
+fi
+EOF
+    chmod +x "$ENTWARE_PREFIX/bin/tg-ws-proxy-monitor.sh"
+    mkdir -p "$ENTWARE_PREFIX/var/spool/cron/crontabs"
+    sed -i '/tg-ws-proxy-monitor/d' "$ENTWARE_PREFIX/var/spool/cron/crontabs/root" 2>/dev/null
+    echo "*/1 * * * * $ENTWARE_PREFIX/bin/tg-ws-proxy-monitor.sh" >> "$ENTWARE_PREFIX/var/spool/cron/crontabs/root"
+    if ! pidof crond >/dev/null 2>&1; then
+        crond -c "$ENTWARE_PREFIX/var/spool/cron/crontabs"
+    fi
+    "$INIT_DIR/S99tg-ws-proxy" start
     echo -e "\n${GREEN}Установка завершена.${NC}"
     echo -e "${YELLOW}Сервис установлен в: $INIT_DIR/S99tg-ws-proxy${NC}"
+    echo -e "${YELLOW}Настроен автоматический мониторинг (проверка каждую минуту)${NC}"
+    echo -e "${YELLOW}Лог мониторинга: $ENTWARE_PREFIX/var/log/tg-ws-proxy-monitor.log${NC}"
     echo -e "${YELLOW}Для управления используйте: $INIT_DIR/S99tg-ws-proxy {start|stop|restart|check}${NC}"
     PAUSE
 }
 delete_tg_ws() {
     echo -e "\n${MAGENTA}Удаляем tg-ws-proxy.${NC}"
+    echo -e "${CYAN}Удаляем задачу из cron.${NC}"
+    sed -i '/tg-ws-proxy-monitor/d' "$ENTWARE_PREFIX/var/spool/cron/crontabs/root" 2>/dev/null
     echo -e "${CYAN}Останавливаем сервис.${NC}"
     if [ -f "$INIT_DIR/S99tg-ws-proxy" ]; then
         "$INIT_DIR/S99tg-ws-proxy" stop >/dev/null 2>&1
