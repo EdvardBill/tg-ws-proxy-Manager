@@ -37,8 +37,11 @@ install_tg_ws() {
     if ! opkg list-installed | grep -q cron; then
         $INSTALL cron
     fi
-    echo -e "${MAGENTA}Скачиваем и распаковываем tg-ws-proxy.${NC}"
-    rm -rf "$ROOT_DIR/tg-ws-proxy"
+    if ! opkg list-installed | grep -q unzip; then
+        $INSTALL unzip
+    fi
+    echo -e "${MAGENTA}Скачиваем и распаковываем tg-ws-proxy-rs.${NC}"
+    rm -rf "$ROOT_DIR/tg-ws-proxy-rs"
     cd "$ROOT_DIR" || exit 1
     if ! wget -O tg-ws-proxy-rs.zip "$GIT_URL"; then
         echo -e "\n${RED}Ошибка скачивания архива.${NC}\n"
@@ -50,19 +53,28 @@ install_tg_ws() {
         PAUSE
         return 1
     fi
-    mv tg-ws-proxy-rs-main tg-ws-proxy
+    mv tg-ws-proxy-rs-main tg-ws-proxy-rs
     rm -f tg-ws-proxy-rs.zip
-    cd "$ROOT_DIR/tg-ws-proxy" || exit 1
-    echo -e "${MAGENTA}Устанавливаем tg-ws-proxy.${NC}"
-    pip install --root-user-action=ignore --no-deps --disable-pip-version-check --timeout 2 --retries 1 -e .
-    cat << 'EOF' > "$INIT_DIR/S99tg-ws-proxy"
+    cd "$ROOT_DIR/tg-ws-proxy-rs" || exit 1
+    if [ -f "$ROOT_DIR/tg-ws-proxy-rs/target/release/tg-ws-proxy-rs" ]; then
+        cp "$ROOT_DIR/tg-ws-proxy-rs/target/release/tg-ws-proxy-rs" "$BIN_DIR/"
+    elif [ -f "$ROOT_DIR/tg-ws-proxy-rs/tg-ws-proxy-rs" ]; then
+        cp "$ROOT_DIR/tg-ws-proxy-rs/tg-ws-proxy-rs" "$BIN_DIR/"
+    else
+        echo -e "\n${RED}Бинарный файл tg-ws-proxy-rs не найден в архиве.${NC}"
+        echo -e "${YELLOW}Возможно, требуется предварительная компиляция.${NC}"
+        PAUSE
+        return 1
+    fi
+    chmod +x "$BIN_DIR/tg-ws-proxy-rs"
+    cat << 'EOF' > "$INIT_DIR/S99tg-ws-proxy-rs"
 #!/bin/sh
 
 ENABLED=yes
-PROCS=tg-ws-proxy
+PROCS=tg-ws-proxy-rs
 ARGS="--host 0.0.0.0"
-DESC="tg-ws-proxy"
-PIDFILE="/var/run/tg-ws-proxy.pid"
+DESC="tg-ws-proxy-rs"
+PIDFILE="/var/run/tg-ws-proxy-rs.pid"
 
 start() {
     echo "Starting $DESC..."
@@ -109,14 +121,15 @@ case "$1" in
 esac
 EOF
     
-    chmod +x "$INIT_DIR/S99tg-ws-proxy"
+    chmod +x "$INIT_DIR/S99tg-ws-proxy-rs"
     mkdir -p "$ENTWARE_PREFIX/var/log"
     chmod 755 "$ENTWARE_PREFIX/var/log"
-    cat << 'EOF' > "$ENTWARE_PREFIX/bin/tg-ws-proxy-monitor.sh"
+    
+    cat << 'EOF' > "$ENTWARE_PREFIX/bin/tg-ws-proxy-rs-monitor.sh"
 #!/bin/sh
 
 LOG_DIR="/opt/var/log"
-LOG_FILE="$LOG_DIR/tg-ws-proxy-monitor.log"
+LOG_FILE="$LOG_DIR/tg-ws-proxy-rs-monitor.log"
 MAX_LOG_SIZE=1048576  # 1MB
 
 if [ ! -d "$LOG_DIR" ]; then
@@ -131,48 +144,51 @@ if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
     fi
 fi
 
-if ! pidof tg-ws-proxy >/dev/null 2>&1; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S'): tg-ws-proxy не запущен, перезапускаем..." >> "$LOG_FILE"
-    /opt/etc/init.d/S99tg-ws-proxy start >> "$LOG_FILE" 2>&1
+if ! pidof tg-ws-proxy-rs >/dev/null 2>&1; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): tg-ws-proxy-rs не запущен, перезапускаем..." >> "$LOG_FILE"
+    /opt/etc/init.d/S99tg-ws-proxy-rs start >> "$LOG_FILE" 2>&1
 fi
 EOF
     
-    chmod +x "$ENTWARE_PREFIX/bin/tg-ws-proxy-monitor.sh"
+    chmod +x "$ENTWARE_PREFIX/bin/tg-ws-proxy-rs-monitor.sh"
     mkdir -p "$ENTWARE_PREFIX/var/spool/cron/crontabs"
     killall crond 2>/dev/null
-    sed -i '/tg-ws-proxy-monitor/d' "$ENTWARE_PREFIX/var/spool/cron/crontabs/root" 2>/dev/null
-    echo "*/1 * * * * $ENTWARE_PREFIX/bin/tg-ws-proxy-monitor.sh" >> "$ENTWARE_PREFIX/var/spool/cron/crontabs/root"
+    sed -i '/tg-ws-proxy-rs-monitor/d' "$ENTWARE_PREFIX/var/spool/cron/crontabs/root" 2>/dev/null
+    echo "*/1 * * * * $ENTWARE_PREFIX/bin/tg-ws-proxy-rs-monitor.sh" >> "$ENTWARE_PREFIX/var/spool/cron/crontabs/root"
     chmod 600 "$ENTWARE_PREFIX/var/spool/cron/crontabs/root"
     crond -c "$ENTWARE_PREFIX/var/spool/cron/crontabs"
-    "$INIT_DIR/S99tg-ws-proxy" start
+    "$INIT_DIR/S99tg-ws-proxy-rs" start 
     echo -e "\n${GREEN}Установка завершена.${NC}"
-    echo -e "${YELLOW}Сервис установлен в: $INIT_DIR/S99tg-ws-proxy${NC}"
+    echo -e "${YELLOW}Сервис установлен в: $INIT_DIR/S99tg-ws-proxy-rs${NC}"
+    echo -e "${YELLOW}Бинарный файл: $BIN_DIR/tg-ws-proxy-rs${NC}"
     echo -e "${YELLOW}Настроен автоматический мониторинг (проверка каждую минуту)${NC}"
-    echo -e "${YELLOW}Лог мониторинга: $ENTWARE_PREFIX/var/log/tg-ws-proxy-monitor.log${NC}"
-    if [ -f "$ENTWARE_PREFIX/var/log/tg-ws-proxy-monitor.log" ]; then
+    echo -e "${YELLOW}Лог мониторинга: $ENTWARE_PREFIX/var/log/tg-ws-proxy-rs-monitor.log${NC}"
+    if [ -f "$ENTWARE_PREFIX/var/log/tg-ws-proxy-rs-monitor.log" ]; then
         echo -e "${GREEN}Лог-файл успешно создан${NC}"
     else
         echo -e "${RED}ВНИМАНИЕ: Лог-файл не создан. Проверьте права.${NC}"
-        touch "$ENTWARE_PREFIX/var/log/tg-ws-proxy-monitor.log"
-        chmod 644 "$ENTWARE_PREFIX/var/log/tg-ws-proxy-monitor.log"
+        touch "$ENTWARE_PREFIX/var/log/tg-ws-proxy-rs-monitor.log"
+        chmod 644 "$ENTWARE_PREFIX/var/log/tg-ws-proxy-rs-monitor.log"
     fi
-    echo -e "${YELLOW}Для управления используйте: $INIT_DIR/S99tg-ws-proxy {start|stop|restart|check}${NC}"
+    echo -e "${YELLOW}Для управления используйте: $INIT_DIR/S99tg-ws-proxy-rs {start|stop|restart|check}${NC}"
     PAUSE
 }
 delete_tg_ws() {
-    echo -e "\n${MAGENTA}Удаляем tg-ws-proxy.${NC}"
+    echo -e "\n${MAGENTA}Удаляем tg-ws-proxy-rs.${NC}"
     echo -e "${CYAN}Удаляем задачу из cron.${NC}"
-    sed -i '/tg-ws-proxy-monitor/d' "$ENTWARE_PREFIX/var/spool/cron/crontabs/root" 2>/dev/null
+    sed -i '/tg-ws-proxy-rs-monitor/d' "$ENTWARE_PREFIX/var/spool/cron/crontabs/root" 2>/dev/null
     echo -e "${CYAN}Останавливаем сервис.${NC}"
-    if [ -f "$INIT_DIR/S99tg-ws-proxy" ]; then
-        "$INIT_DIR/S99tg-ws-proxy" stop >/dev/null 2>&1
+    if [ -f "$INIT_DIR/S99tg-ws-proxy-rs" ]; then
+        "$INIT_DIR/S99tg-ws-proxy-rs" stop >/dev/null 2>&1
     fi
     echo -e "${CYAN}Удаляем init.d скрипт.${NC}"
-    rm -f "$INIT_DIR/S99tg-ws-proxy" >/dev/null 2>&1
-    echo -e "${CYAN}Удаляем tg-ws-proxy.${NC}"
-    rm -rf "$ROOT_DIR/tg-ws-proxy" >/dev/null 2>&1
+    rm -f "$INIT_DIR/S99tg-ws-proxy-rs" >/dev/null 2>&1
+    echo -e "${CYAN}Удаляем бинарный файл.${NC}"
+    rm -f "$BIN_DIR/tg-ws-proxy-rs" >/dev/null 2>&1
+    echo -e "${CYAN}Удаляем исходники.${NC}"
+    rm -rf "$ROOT_DIR/tg-ws-proxy-rs" >/dev/null 2>&1
     echo -e "${CYAN}Очищаем временные файлы.${NC}"
-    rm -f "$BIN_DIR/tg-ws-proxy"* >/dev/null 2>&1
+    rm -f "$ROOT_DIR/tg-ws-proxy-rs.zip" >/dev/null 2>&1
     echo -e "\n${GREEN}Удаление завершено.${NC}"
     PAUSE
 }
@@ -180,21 +196,21 @@ check_monitor_status() {
     echo -e "\n${CYAN}=== Диагностика мониторинга ===${NC}"
     if [ -d "$ENTWARE_PREFIX/var/log" ]; then
         echo -e "${GREEN}✓ Директория логов существует: $ENTWARE_PREFIX/var/log${NC}"
-        ls -la "$ENTWARE_PREFIX/var/log" | grep tg-ws
+        ls -la "$ENTWARE_PREFIX/var/log" | grep tg-ws-proxy-rs
     else
         echo -e "${RED}✗ Директория логов НЕ существует${NC}"
         mkdir -p "$ENTWARE_PREFIX/var/log"
         echo -e "${YELLOW}Директория создана${NC}"
     fi
-    if [ -f "$ENTWARE_PREFIX/bin/tg-ws-proxy-monitor.sh" ]; then
+    if [ -f "$ENTWARE_PREFIX/bin/tg-ws-proxy-rs-monitor.sh" ]; then
         echo -e "${GREEN}✓ Скрипт мониторинга существует${NC}"
-        chmod +x "$ENTWARE_PREFIX/bin/tg-ws-proxy-monitor.sh"
+        chmod +x "$ENTWARE_PREFIX/bin/tg-ws-proxy-rs-monitor.sh"
     else
         echo -e "${RED}✗ Скрипт мониторинга НЕ существует${NC}"
     fi
     if [ -f "$ENTWARE_PREFIX/var/spool/cron/crontabs/root" ]; then
         echo -e "${GREEN}✓ Cron задача существует${NC}"
-        cat "$ENTWARE_PREFIX/var/spool/cron/crontabs/root" | grep tg-ws
+        cat "$ENTWARE_PREFIX/var/spool/cron/crontabs/root" | grep tg-ws-proxy-rs
     else
         echo -e "${RED}✗ Cron задача НЕ существует${NC}"
     fi
@@ -206,34 +222,35 @@ check_monitor_status() {
         echo -e "${YELLOW}Cron запущен${NC}"
     fi
     echo -e "\n${YELLOW}Запускаем мониторинг вручную...${NC}"
-    sh "$ENTWARE_PREFIX/bin/tg-ws-proxy-monitor.sh"
-    if [ -f "$ENTWARE_PREFIX/var/log/tg-ws-proxy-monitor.log" ]; then
+    sh "$ENTWARE_PREFIX/bin/tg-ws-proxy-rs-monitor.sh"
+    if [ -f "$ENTWARE_PREFIX/var/log/tg-ws-proxy-rs-monitor.log" ]; then
         echo -e "${GREEN}✓ Лог-файл создан успешно${NC}"
         echo -e "${CYAN}Содержимое лога:${NC}"
-        cat "$ENTWARE_PREFIX/var/log/tg-ws-proxy-monitor.log"
+        cat "$ENTWARE_PREFIX/var/log/tg-ws-proxy-rs-monitor.log"
     else
         echo -e "${RED}✗ Лог-файл НЕ создался${NC}"
-        touch "$ENTWARE_PREFIX/var/log/tg-ws-proxy-monitor.log"
-        chmod 644 "$ENTWARE_PREFIX/var/log/tg-ws-proxy-monitor.log"
+        touch "$ENTWARE_PREFIX/var/log/tg-ws-proxy-rs-monitor.log"
+        chmod 644 "$ENTWARE_PREFIX/var/log/tg-ws-proxy-rs-monitor.log"
         echo -e "${YELLOW}Лог создан вручную${NC}"
     fi
     PAUSE
 }
+
 menu() {
     clear
-    echo -e "╔═════════════════════════════════╗"
-    echo -e "║ ${BLUE}tg-ws-proxy Manager для Padavan${NC} ║"
-    echo -e "╚═════════════════════════════════╝"
+    echo -e "╔══════════════════════════════════════╗"
+    echo -e "║ ${BLUE}tg-ws-proxy-rs Manager для Padavan${NC} ║"
+    echo -e "╚══════════════════════════════════════╝"
     echo -e "                          ${DGRAY}by save55${NC}\n"
-    if pidof "tg-ws-proxy" >/dev/null 2>&1; then
-        echo -e "${YELLOW}Статус tg-ws-proxy:  ${GREEN}ЗАПУЩЕН${NC}"
-        PORT=$(netstat -lnpt 2>/dev/null | grep tg-ws-proxy | awk '{print $4}' | cut -d: -f2 | head -1)
+    if pidof "tg-ws-proxy-rs" >/dev/null 2>&1; then
+        echo -e "${YELLOW}Статус tg-ws-proxy-rs:  ${GREEN}ЗАПУЩЕН${NC}"
+        PORT=$(netstat -lnpt 2>/dev/null | grep tg-ws-proxy-rs | awk '{print $4}' | cut -d: -f2 | head -1)
         echo -e "${YELLOW}Адрес SOCKS5: ${NC}$LAN_IP:${PORT:-1080}"
-    elif [ -d "$ROOT_DIR/tg-ws-proxy" ] || python3 -m pip show tg-ws-proxy >/dev/null 2>&1; then
-        echo -e "${YELLOW}Статус tg-ws-proxy: ${RED}НЕ ЗАПУЩЕН${NC}"
-        echo -e "${CYAN}Для запуска выполните: $INIT_DIR/S99tg-ws-proxy start${NC}"
+    elif [ -d "$ROOT_DIR/tg-ws-proxy-rs" ] || [ -f "$BIN_DIR/tg-ws-proxy-rs" ]; then
+        echo -e "${YELLOW}Статус tg-ws-proxy-rs: ${RED}НЕ ЗАПУЩЕН${NC}"
+        echo -e "${CYAN}Для запуска выполните: $INIT_DIR/S99tg-ws-proxy-rs start${NC}"
     else
-        echo -e "${YELLOW}Статус tg-ws-proxy: ${RED}НЕ УСТАНОВЛЕН${NC}"
+        echo -e "${YELLOW}Статус tg-ws-proxy-rs: ${RED}НЕ УСТАНОВЛЕН${NC}"
     fi
     echo -e "\n${CYAN}1) ${GREEN}Установить${NC}"
     echo -e "${CYAN}2) ${GREEN}Удалить${NC}"
@@ -248,24 +265,24 @@ menu() {
         1) install_tg_ws ;;
         2) delete_tg_ws ;;
         3) 
-            if [ -f "$INIT_DIR/S99tg-ws-proxy" ]; then
-                "$INIT_DIR/S99tg-ws-proxy" start
+            if [ -f "$INIT_DIR/S99tg-ws-proxy-rs" ]; then
+                "$INIT_DIR/S99tg-ws-proxy-rs" start
             else
                 echo -e "${RED}Сервис не установлен.${NC}"
                 PAUSE
             fi
             ;;
         4)
-            if [ -f "$INIT_DIR/S99tg-ws-proxy" ]; then
-                "$INIT_DIR/S99tg-ws-proxy" stop
+            if [ -f "$INIT_DIR/S99tg-ws-proxy-rs" ]; then
+                "$INIT_DIR/S99tg-ws-proxy-rs" stop
             else
                 echo -e "${RED}Сервис не установлен.${NC}"
                 PAUSE
             fi
             ;;
         5)
-            if [ -f "$INIT_DIR/S99tg-ws-proxy" ]; then
-                "$INIT_DIR/S99tg-ws-proxy" check
+            if [ -f "$INIT_DIR/S99tg-ws-proxy-rs" ]; then
+                "$INIT_DIR/S99tg-ws-proxy-rs" check
             else
                 echo -e "${RED}Сервис не установлен.${NC}"
             fi
@@ -275,4 +292,5 @@ menu() {
         *) echo; exit 0 ;;
     esac
 }
+
 while true; do menu; done
