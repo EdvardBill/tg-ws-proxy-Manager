@@ -8,7 +8,7 @@ RED="\033[1;31m"
 BLUE="\033[0;34m"
 DGRAY="\033[38;5;244m"
 NC="\033[0m"
-GIT_URL="https://github.com/Flowseal/tg-ws-proxy/archive/refs/heads/master.zip"
+GIT_URL="https://github.com/valnesfjord/tg-ws-proxy-rs/archive/refs/heads/master.zip"
 ENTWARE_PREFIX="/opt"
 INIT_DIR="$ENTWARE_PREFIX/etc/init.d"
 BIN_DIR="$ENTWARE_PREFIX/bin"
@@ -34,26 +34,24 @@ install_tg_ws() {
     fi
     echo -e "\n${MAGENTA}Обновляем пакеты Entware.${NC}"
     $UPDATE
-    echo -e "${MAGENTA}Устанавливаем необходимые пакеты.${NC}"
-    $INSTALL python3 python3-pip python3-psutil python3-cryptography unzip
     if ! opkg list-installed | grep -q cron; then
         $INSTALL cron
     fi
     echo -e "${MAGENTA}Скачиваем и распаковываем tg-ws-proxy.${NC}"
     rm -rf "$ROOT_DIR/tg-ws-proxy"
     cd "$ROOT_DIR" || exit 1
-    if ! wget -O tg-ws-proxy.zip "$GIT_URL"; then
+    if ! wget -O tg-ws-proxy-rs.zip "$GIT_URL"; then
         echo -e "\n${RED}Ошибка скачивания архива.${NC}\n"
         PAUSE
         return 1
     fi
-    if ! unzip tg-ws-proxy.zip >/dev/null 2>&1; then
+    if ! unzip tg-ws-proxy-rs.zip >/dev/null 2>&1; then
         echo -e "\n${RED}Ошибка распаковки.${NC}\n"
         PAUSE
         return 1
     fi
-    mv tg-ws-proxy-main tg-ws-proxy
-    rm -f tg-ws-proxy.zip
+    mv tg-ws-proxy-rs-main tg-ws-proxy
+    rm -f tg-ws-proxy-rs.zip
     cd "$ROOT_DIR/tg-ws-proxy" || exit 1
     echo -e "${MAGENTA}Устанавливаем tg-ws-proxy.${NC}"
     pip install --root-user-action=ignore --no-deps --disable-pip-version-check --timeout 2 --retries 1 -e .
@@ -173,14 +171,7 @@ delete_tg_ws() {
     rm -f "$INIT_DIR/S99tg-ws-proxy" >/dev/null 2>&1
     echo -e "${CYAN}Удаляем tg-ws-proxy.${NC}"
     rm -rf "$ROOT_DIR/tg-ws-proxy" >/dev/null 2>&1
-    echo -e "${CYAN}Удаляем пакеты Python.${NC}"
-    python3 -m pip uninstall -y tg-ws-proxy >/dev/null 2>&1
-    pip uninstall -y tg-ws-proxy >/dev/null 2>&1
-    echo -e "${CYAN}Удаляем установленные пакеты.${NC}"
-    $OPKG remove --autoremove python3 python3-pip python3-psutil python3-cryptography unzip >/dev/null 2>&1
     echo -e "${CYAN}Очищаем временные файлы.${NC}"
-    rm -rf "$ROOT_DIR/.cache/pip" >/dev/null 2>&1
-    rm -rf "$ROOT_DIR/.local/lib/python3"* >/dev/null 2>&1
     rm -f "$BIN_DIR/tg-ws-proxy"* >/dev/null 2>&1
     echo -e "\n${GREEN}Удаление завершено.${NC}"
     PAUSE
